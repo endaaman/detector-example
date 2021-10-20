@@ -16,8 +16,10 @@ def pad_targets(bboxes, labels, size, fill=(0, 0)):
     if fill:
         pad_bboxes.fill(fill[0])
         pad_labels.fill(fill[1])
-    pad_bboxes[0:bboxes.shape[0], :] = bboxes
-    pad_labels[0:labels.shape[0]] = labels
+    if len(bboxes) > 0:
+        pad_bboxes[0:len(bboxes), :] = bboxes
+    if len(labels) > 0:
+        pad_labels[0:len(labels)] = labels
     return pad_bboxes, pad_labels
 
 
@@ -32,8 +34,9 @@ def xyxy_to_xywh(bb, w, h):
     return bb
 
 class CircleDataset(Dataset):
-    def __init__(self, target, image_size=512, bg=(0, 0, 0), fg=(255, 0, 0), normalized=True):
+    def __init__(self, target='default', image_size=512, bg=(0, 0, 0), fg=(255, 0, 0), normalized=True):
         adapter_table = {
+            'default': self.default_adapter, # pascal_voc
             'effdet': self.effdet_adapter,
             'yolo': self.yolo_adapter,
             'ssd': self.ssd_adapter,
@@ -102,10 +105,13 @@ class CircleDataset(Dataset):
         labels = np.array(result['labels'])
         return self.adapter(images, bboxes, labels)
 
+    def default_adapter(self, images, bboxes, labels):
+        return images, torch.FloatTensor(bboxes), torch.FloatTensor(labels)
 
     def effdet_adapter(self, images, bboxes, labels):
         # use yxyx
-        bboxes = bboxes[:, [1, 0, 3, 2]]
+        if len(bboxes) > 0:
+            bboxes = bboxes[:, [1, 0, 3, 2]]
         bboxes, labels = pad_targets(bboxes, labels, 1, fill=(0, -1))
         labels = {
             'bbox': torch.FloatTensor(bboxes),
@@ -114,7 +120,8 @@ class CircleDataset(Dataset):
         return images, labels
 
     def yolo_adapter(self, images, bboxes, labels):
-        bboxes = xyxy_to_xywh(bboxes, w=images.shape[2], h=images.shape[1])
+        if len(bboxes) > 0:
+            bboxes = xyxy_to_xywh(bboxes, w=images.shape[2], h=images.shape[1])
         bboxes, labels = pad_targets(bboxes, labels, 1, fill=(0, -1))
         batch_index = np.zeros([1, 1])
         # yolo targets: [batch_idx, class_id, x, y, w, h]
@@ -131,10 +138,10 @@ class CircleDataset(Dataset):
 
 if __name__ == '__main__':
     # draw_bounding_boxesはxyxy形式
-    ds = CircleDataset(use_yxyx=False, normalized=False)
-    for (x, y) in ds:
+    ds = CircleDataset(normalized=False)
+    for (x, bboxes, labels) in ds:
         to_pil_image(x).save(f'example_x.png')
-        t = draw_bounding_boxes(image=x, boxes=y['bbox'], labels=[str(v.item()) for v in y['cls']])
+        t = draw_bounding_boxes(image=x, boxes=bboxes, labels=[str(v.item()) for v in labels])
         img = to_pil_image(t)
         img.save(f'example_xy.png')
         break
