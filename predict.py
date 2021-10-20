@@ -67,6 +67,7 @@ class YOLOPredictor:
         print(outputs)
         t = non_max_suppression(outputs, self.conf_thres, self.nms_thres)[0].type(torch.long)
         t = t[:, :6]
+        # TODO: fix dimension
         return t[None, :, :].detach().cpu()
 
 
